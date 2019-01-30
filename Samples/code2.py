@@ -67,7 +67,12 @@ def model(vocab_size,x,labels):
             stddev=0.2, dtype=tf.float32),dtype=tf.float32)    
     gh=tf.nn.embedding_lookup(w2,x)
     flat=tf.reduce_mean(gh, axis=[1])
-    dense_w=tf.get_variable("dense1",shape=(16,16))
+    print(x.get_shape())    
+    print(w2.get_shape())
+    print(gh.get_shape())
+    exit()
+
+    dense_w=tf.get_variable("dense1",shape=(16,16))    
     dense1=tf.nn.relu(tf.matmul(flat,dense_w))
 
     dense_w2=tf.get_variable("dense2",shape=(16,2))

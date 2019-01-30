@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import math
+from tensorflow import keras
 import sys
 import pickle
 from six.moves import cPickle
@@ -18,264 +19,89 @@ import matplotlib.pyplot as plt
 from keras.optimizers import SGD
 from genericNeuralNet import GenericNeuralNet, variable, variable_with_weight_decay
 
-
-def load_batch(fpath):
-    f = open(fpath,"rb").read()
-    size = 32*32*3+1
-    labels = []
-    images = []
-    for i in range(10000):
-        arr = np.fromstring(f[i*size:(i+1)*size],dtype=np.uint8)
-        # lab = np.identity(10)[arr[0]]
-        lab = arr[0]        
-
-        img = arr[1:].reshape((3,32,32)).transpose((1,2,0))
-
-        labels.append(lab)
-        images.append((img/255)-.5)    # To get a good picture comment this and pass only img
-        
-    return np.array(images),np.array(labels)
-
-def load_cifar():
-    train_data = []
-    train_labels = []
+def load_imdb(maxlen=256,num_words=10000):
+    # print(tf.__version__)
+    imdb=keras.datasets.imdb
+    (train_data, train_labels),(test_data,test_labels)=imdb.load_data(num_words=num_words)  
     
-    if not os.path.exists("cifar-10-batches-bin"):
-        urllib.request.urlretrieve("https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz",
-                                   "cifar-data.tar.gz")
-        os.popen("tar -xzf cifar-data.tar.gz").read()
-        
+    print("Training entries: {}, labels: {}".format(len(train_data), len(train_labels)))
+    # print(len(train_data[0]),len(train_data[1]))
+    # A dictionary mapping words to an integer index
+    word_index = imdb.get_word_index()
 
-    for i in range(5):
-        r,s = load_batch("cifar-10-batches-bin/data_batch_"+str(i+1)+".bin")
-        train_data.extend(r)
-        train_labels.extend(s)
-        
-    train_data = np.array(train_data)
-    train_labels = np.array(train_labels)
-    
-    test_data, test_labels = load_batch("cifar-10-batches-bin/test_batch.bin")
+    # The first indices are reserved
+    word_index = {k:(v+3) for k,v in word_index.items()}
+    word_index["<PAD>"] = 0
+    word_index["<START>"] = 1
+    word_index["<UNK>"] = 2  # unknown
+    word_index["<UNUSED>"] = 3
 
-    test_data=test_data
-    train_data=train_data
-    # print(train_data.shape)
-    # plt.imshow(test_data[30])
-    # plt.show()
-    # test_data=test_data.reshape(test_data.shape[0],-1)
-    # print(train_data[30].shape)
-    # print((train_data[30].dtype))
-    # test_data=test_data.reshape(test_data.shape[0],32,32,3).astype(np.uint8)
-    # plt.imshow(test_data[30])
-    # plt.show()
-    # exit()
-    VALIDATION_SIZE = 5000
-    validation_data = train_data[:VALIDATION_SIZE]
-    validation_labels = train_labels[:VALIDATION_SIZE]
+    reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
 
-    train_data = train_data[VALIDATION_SIZE:]
-    train_labels = train_labels[VALIDATION_SIZE:]
+    def decode_review(text):
+        return ' '.join([reverse_word_index.get(i, '?') for i in text])
+    decode_review(train_data[0])
+
+
+    train_data = keras.preprocessing.sequence.pad_sequences(train_data,
+                    value=word_index["<PAD>"],padding='post',maxlen=maxlen)
+
+    test_data = keras.preprocessing.sequence.pad_sequences(test_data,
+                    value=word_index["<PAD>"],padding='post',maxlen=maxlen)
+
+    validation_size = 5000
+
+    validation_data = train_data[:validation_size]
+    train_data = train_data[validation_size:]
+    validation_labels = train_labels[:validation_size]
+    train_labels = train_labels[validation_size:]
+    print(validation_data.shape)
+    print(train_data.shape)
+    print(validation_labels.shape)
+    print(train_labels.shape)
+
     train = DataSet(train_data, train_labels)
     validation = DataSet(validation_data, validation_labels)
     test = DataSet(test_data, test_labels)
 
     return base.Datasets(train=train, validation=validation, test=test)
 
-class CIFARModel(GenericNeuralNet):
-    def __init__(self,input_channels,weight_decay,input_side,dense1_unit,dense2_unit,kernel_size,filter1,filter2,**kwargs):
-        self.weight_decay = weight_decay
-        self.input_channels = input_channels
-        self.input_side = input_side
-        self.input_dim = self.input_side * self.input_side * self.input_channels
-        self.kernel_size=kernel_size
-        self.filter1=filter1
-        self.filter2=filter2
+
+class textCL_model(GenericNeuralNet):
+    def __init__(self,weight_decay,vocab_size,maxlen,dense1_unit,**kwargs):
+        self.vocab_size=vocab_size
+        self.weight_decay=weight_decay
         self.dense1_unit=dense1_unit
-        self.dense2_unit=dense2_unit
+        self.input_dim=maxlen
+        self.num_classes = 2        
+        super(textCL_model, self).__init__(**kwargs)
 
-        
-
-        super(CIFARModel, self).__init__(**kwargs)
-    def conv2d_maker(self, input_x,kernel_size, input_channels,filter_size, stride):
-        strides=[1, stride, stride, 1]
-        weights = variable_with_weight_decay(
-            'weights', 
-            [kernel_size *kernel_size * input_channels * filter_size],
-            stddev=2.0 / math.sqrt(float(kernel_size* kernel_size * input_channels)),
-            wd=self.weight_decay)
-        biases = variable(
-            'biases',
-            [filter_size],
-            tf.constant_initializer(0.0))
-
-        weights_reshaped = tf.reshape(weights, [kernel_size,kernel_size, input_channels, filter_size])        
-        hidden=tf.nn.relu(tf.nn.conv2d(input_x, weights_reshaped, strides=strides,padding='VALID')+biases)
-        return hidden
-
-
-
-
-
-
-
-import tensorflow as tf
-from tensorflow import keras
-import numpy as np
-# print(tf.__version__)
-imdb=keras.datasets.imdb
-(train_data, train_labels),(test_data,test_labels)=imdb.load_data(num_words=10000)
-
-print("Training entries: {}, labels: {}".format(len(train_data), len(train_labels)))
-# print(train_data[0])
-# print(np.shape(train_data[0]))
-# print(train_labels)
-# print(test_data.shape)
-# print(test_labels.shape)
-
-len(train_data[0]), len(train_data[1])
-
-# A dictionary mapping words to an integer index
-word_index = imdb.get_word_index()
-
-# The first indices are reserved
-word_index = {k:(v+3) for k,v in word_index.items()}
-word_index["<PAD>"] = 0
-word_index["<START>"] = 1
-word_index["<UNK>"] = 2  # unknown
-word_index["<UNUSED>"] = 3
-
-reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
-
-def decode_review(text):
-    return ' '.join([reverse_word_index.get(i, '?') for i in text])
-decode_review(train_data[0])
-
-
-train_data = keras.preprocessing.sequence.pad_sequences(train_data,
-                value=word_index["<PAD>"],padding='post',maxlen=256)
-
-test_data = keras.preprocessing.sequence.pad_sequences(test_data,
-                value=word_index["<PAD>"],padding='post',maxlen=256)
-
-vocab_size = 10000
-
-# print(train_data.shape)
-# print(train_labels)
-# print(test_data.shape)
-# print(test_labels.shape)
-
-x_val = train_data[:10000]
-partial_x_train = train_data[10000:]
-
-y_val = train_labels[:10000]
-partial_y_train = train_labels[10000:]
-
-tf.set_random_seed(0)
-
-print(partial_y_train.shape)
-# c = np.random.random([10,1])
-# b = tf.nn.embedding_lookup(c, [1, 3])
-# print(c)
-# with tf.Session() as sess:
-#     sess.run(tf.global_variables_initializer())
-#     print (sess.run(b))
-
-
-def model(vocab_size,x,labels):
-    with tf.variable_scope("embedding"):
-        w2=tf.get_variable(name="what",shape=[vocab_size,16],initializer=tf.truncated_normal_initializer(
-            stddev=0.2, dtype=tf.float32),dtype=tf.float32)    
-    gh=tf.nn.embedding_lookup(w2,x)
-    flat=tf.reduce_mean(gh, axis=[1])
-    dense_w=tf.get_variable("dense1",shape=(16,16))
-    dense1=tf.nn.relu(tf.matmul(flat,dense_w))
-
-    dense_w2=tf.get_variable("dense2",shape=(16,2))
-    logits=tf.matmul(dense1,dense_w2)
-    
-    labels = tf.one_hot(labels, depth=2) 
-    cross_entropy = - tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), reduction_indices=1)        
-    indiv_loss_no_reg = cross_entropy
-
-    loss_no_reg = tf.reduce_mean(cross_entropy, name='xentropy_mean')
-    tf.add_to_collection('losses', loss_no_reg)
-    total_loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-
-    optimizer = tf.train.AdamOptimizer(0.01)
-    train_op = optimizer.minimize(total_loss) 
-    
-    return loss_no_reg,train_op
-
-x=tf.placeholder(tf.int32,shape=(None,256)) 
-labels=tf.placeholder(tf.int32,shape=(None))    
-b=model(10000,x,labels)
-init = tf.global_variables_initializer()        
-
-epochs=100
-batch_size=500
-with tf.Session() as sess:
-    sess.run(init)    
-    # print(partial_x_train.shape) #(15000,256)        
-    for epoch in range(epochs):     
-        for i in range(int(partial_x_train.shape[0]/batch_size)):
-            input_x=partial_x_train[i*batch_size:(i+1)*batch_size]
-            input_y=partial_y_train[i*batch_size:(i+1)*batch_size]
-
-            feed_dict={x:input_x,labels:input_y}
-            loss_val,_=sess.run(b,feed_dict=feed_dict)            
-            print(loss_val)
     def inference(self,input_x):
-        # input_x_reshaped=np.reshape(input_x,(input_x.shape[0],self.input_side,self.input_side,self.input_channels))
+        input_x_reshaped=tf.reshape(input_x, [-1, self.input_dim])
         
-        input_x_reshaped=tf.reshape(input_x, [-1, self.input_side, self.input_side, self.input_channels])
-        
-        with tf.variable_scope('conv1'):
-            conv1 = self.conv2d_maker(input_x_reshaped, self.kernel_size, self.input_channels, self.filter1, stride=1)
+        with tf.variable_scope('embedding'):
+            weights = variable_with_weight_decay('weights', [self.vocab_size* self.dense1_unit],
+                                                stddev=1.0 / math.sqrt(float(self.dense1_unit)),wd=self.weight_decay)                    
+            embedding_layer=tf.nn.embedding_lookup(tf.reshape(weights,(self.vocab_size,self.dense1_unit)),input_x_reshaped)    
 
-        with tf.variable_scope('conv2'):
-            conv2 = self.conv2d_maker(conv1, self.kernel_size, self.filter1, self.filter1, stride=1)
+        flat=tf.reduce_mean(embedding_layer, axis=[1])
 
-        pool1=tf.nn.max_pool(value=conv2,ksize=[1,2,2,1],strides=[1,1,1,1],padding='VALID',name='pool1')
-        
-        with tf.variable_scope('conv3'):
-            conv3 = self.conv2d_maker(pool1, self.kernel_size, self.filter1, self.filter2, stride=1)
-        
-        with tf.variable_scope('conv4'):
-            conv4 = self.conv2d_maker(conv3, self.kernel_size, self.filter2, self.filter2, stride=1)
-        
-        pool2=tf.nn.max_pool(value=conv4,ksize=[1,2,2,1],strides=[1,1,1,1],padding='VALID',name='pool2')
-
-        flat1=tf.contrib.layers.flatten(pool2)
-
-        
         with tf.variable_scope('dense1'):
-            weights = variable_with_weight_decay('weights', [flat1.get_shape().as_list()[-1]* self.dense1_unit],stddev=1.0 / math.sqrt(float(self.dense1_unit)),wd=self.weight_decay)            
-            biases = variable('biases',[self.dense1_unit],tf.constant_initializer(0.0))
+            weights = variable_with_weight_decay('weights', (self.dense1_unit* self.dense1_unit),
+                                                stddev=1.0 / math.sqrt(float(self.dense1_unit)),wd=self.weight_decay)            
 
-            dense1 = tf.nn.relu(tf.matmul(flat1, tf.reshape(weights, [flat1.get_shape().as_list()[-1], self.dense1_unit])) + biases)
-
-        dropout=tf.layers.dropout(dense1,rate=0.5)
+            dense1 = tf.nn.relu(tf.matmul(flat, tf.reshape(weights, (self.dense1_unit, self.dense1_unit))))
 
         with tf.variable_scope('dense2'):
-            weights = variable_with_weight_decay('weights', [self.dense1_unit * self.dense2_unit],stddev=1.0 / math.sqrt(float(self.dense2_unit)),wd=self.weight_decay)            
-            biases = variable('biases',[self.dense2_unit],tf.constant_initializer(0.0))
-
-            dense2 = tf.nn.relu(tf.matmul(dropout, tf.reshape(weights, [self.dense1_unit, self.dense2_unit])) + biases)
-
-        logits_unit=10
-        with tf.variable_scope('logits'):
-            weights = variable_with_weight_decay('weights', [self.dense2_unit * logits_unit],stddev=1.0 / math.sqrt(float(logits_unit)),wd=self.weight_decay)            
-            biases = variable('biases',[logits_unit],tf.constant_initializer(0.0))
-
-            logits = tf.matmul(dense2, tf.reshape(weights, [self.dense2_unit, logits_unit])) + biases
-
+            weights = variable_with_weight_decay('weights', (self.dense1_unit* self.num_classes),
+                                                stddev=1.0 / math.sqrt(float(self.dense1_unit)),wd=self.weight_decay)            
+            logits=tf.matmul(dense1, tf.reshape(weights, (self.dense1_unit, self.num_classes)))
         return logits
-
+        
 
     def load_trained_model(self, input_x):
-            model = Sequential()           
-            
+            model = Sequential()                       
             model=self.inference(input_x)
-
             model.load_weights( self.file_name)
             return model            
 
@@ -288,7 +114,7 @@ with tf.Session() as sess:
 
         retrain_dataset = DataSet(feed_dict[self.input_placeholder], feed_dict[self.labels_placeholder])
         
-        for step in xrange(num_steps):   
+        for step in range(num_steps):   
             iter_feed_dict = self.fill_feed_dict_with_batch(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
 
@@ -296,23 +122,15 @@ with tf.Session() as sess:
     def get_all_params(self):
         # names=[n.name for n in tf.get_default_graph().as_graph_def().node]
         all_params = []
-        for layer in ['conv1', 'conv2', 'conv3', 'conv4', 'dense1', 'dense2','logits']:        
-            for var_name in ['weights', 'biases']:
+        for layer in ['dense1', 'dense2']:        
+            for var_name in ['weights']:
                 temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
                 all_params.append(temp_tensor)
         return all_params 
 
-
-    # def get_all_params_sample(self):
-    #     names = [weight.name for layer in self.model.layers for weight in layer.weights]
-    #     weights = self.model.get_weights()
-    #     for name, weight in zip(names, weights):
-    #         print(name, weight.shape)
-
-
     def placeholder_inputs(self):
         input_placeholder = tf.placeholder(
-            tf.float32, 
+            tf.int32, 
             shape=(None, self.input_dim),
             name='input_placeholder')
         labels_placeholder = tf.placeholder(

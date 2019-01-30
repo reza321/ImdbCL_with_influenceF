@@ -406,16 +406,14 @@ class GenericNeuralNet(object):
 
 
     def loss(self, logits, labels):
-
-        labels = tf.one_hot(labels, depth=self.num_classes)
-
-        cross_entropy = - tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), reduction_indices=1)
-
+        
+        labels = tf.one_hot(labels, depth=self.num_classes) 
+        cross_entropy = - tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), reduction_indices=1)        
         indiv_loss_no_reg = cross_entropy
+
         loss_no_reg = tf.reduce_mean(cross_entropy, name='xentropy_mean')
         tf.add_to_collection('losses', loss_no_reg)
-
-        total_loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
+        total_loss = tf.add_n(tf.get_collection('losses'), name='total_loss')    
 
         return total_loss, loss_no_reg, indiv_loss_no_reg
 
@@ -449,7 +447,7 @@ class GenericNeuralNet(object):
             # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
                 if save_checkpoints: self.saver.save(sess, self.checkpoint_file, global_step=step)
-              #  if verbose: self.print_model_eval()
+                if verbose: self.print_model_eval()
 
 
 

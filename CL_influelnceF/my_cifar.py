@@ -53,7 +53,13 @@ def load_cifar():
         
     train_data = np.array(train_data)
     train_labels = np.array(train_labels)
+    print(train_data.shape)
+    print(train_labels.shape)
     
+    print(type(train_data))
+    print(type(train_labels))    
+
+    exit()
     test_data, test_labels = load_batch("cifar-10-batches-bin/test_batch.bin")
 
     test_data=test_data
@@ -110,23 +116,6 @@ class CIFARModel(GenericNeuralNet):
         weights_reshaped = tf.reshape(weights, [kernel_size,kernel_size, input_channels, filter_size])        
         hidden=tf.nn.relu(tf.nn.conv2d(input_x, weights_reshaped, strides=strides,padding='VALID')+biases)
         return hidden
-#    def inference_orig(self,input_x):
-        # input_x_reshaped=np.reshape(input_x,(input_x.shape[0],self.input_side,self.input_side,self.input_channels))
-#        input_x_reshaped=tf.reshape(input_x, [-1, self.input_side, self.input_side, self.input_channels])
-#        conv1=tf.layers.conv2d(inputs=input_x_reshaped,filters=64,kernel_size=3,activation=tf.nn.relu,padding='valid',name='conv1')
-#        conv2=tf.layers.conv2d(inputs=conv1,filters=64,kernel_size=3,activation=tf.nn.relu,padding='valid',name='conv2')
-#        pool1=tf.layers.max_pooling2d(inputs=conv2,pool_size=[2,2],strides=1,name='pool1')#
-
-#        conv3=tf.layers.conv2d(inputs=pool1,filters=128,kernel_size=3,activation=tf.nn.relu,padding='valid',name='conv3')
-#        conv4=tf.layers.conv2d(inputs=conv3,filters=128,kernel_size=3,activation=tf.nn.relu,padding='valid',name='conv4')
-#        pool2=tf.layers.max_pooling2d(inputs=conv4,pool_size=[2,2],strides=1,name='pool2')     
-
-#        flat1=tf.layers.flatten(pool2)
-#        dense1=tf.layers.dense(inputs=flat1,units=256,activation=tf.nn.relu,name='dense1')
-#        dropout=tf.layers.dropout(inputs=dense1,rate=0.5)
-#        dense2=tf.layers.dense(inputs=dropout,units=256,activation=tf.nn.relu,name='dense2')
-#        logits=tf.layers.dense(inputs=dense2,units=10,name='logits')
-#        return logits
 
     def inference(self,input_x):
         # input_x_reshaped=np.reshape(input_x,(input_x.shape[0],self.input_side,self.input_side,self.input_channels))
