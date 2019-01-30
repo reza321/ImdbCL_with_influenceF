@@ -1,2 +1,5 @@
-model_checkpoint_path: "imdb_mymodel-checkpoint-49999"
-all_model_checkpoint_paths: "imdb_mymodel-checkpoint-49999"
+model_checkpoint_path: "imdb_mymodel-checkpoint-399999"
+all_model_checkpoint_paths: "imdb_mymodel-checkpoint-99999"
+all_model_checkpoint_paths: "imdb_mymodel-checkpoint-199999"
+all_model_checkpoint_paths: "imdb_mymodel-checkpoint-299999"
+all_model_checkpoint_paths: "imdb_mymodel-checkpoint-399999"

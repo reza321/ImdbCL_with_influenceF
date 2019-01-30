@@ -122,7 +122,7 @@ class textCL_model(GenericNeuralNet):
     def get_all_params(self):
         # names=[n.name for n in tf.get_default_graph().as_graph_def().node]
         all_params = []
-        for layer in ['dense1', 'dense2']:        
+        for layer in ['embedding','dense1', 'dense2']:        
             for var_name in ['weights']:
                 temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
                 all_params.append(temp_tensor)

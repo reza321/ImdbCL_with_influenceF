@@ -37,7 +37,7 @@ model=textCL_model(
 	model_name='imdb_mymodel',
 	damping=1e-2)
 
-num_steps = 50000
+num_steps = 400000
 
 mode='all'
 if mode=='all':
@@ -58,8 +58,8 @@ actual_loss_diffs, predicted_loss_diffs, indices_to_remove = experiments.test_re
 	model, 
 	test_idx=test_idx, 
 	iter_to_load=iter_to_load, 
-	num_to_remove=3,
-	num_steps=10000, 
+	num_to_remove=100,
+	num_steps=30000, 
 	remove_type='maxinf',
 	known_indices_to_remove=known_indices_to_remove,
 	force_refresh=True)
