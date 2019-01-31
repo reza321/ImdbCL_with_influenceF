@@ -17,7 +17,7 @@ from keras.utils import np_utils
 from keras.models import load_model
 import matplotlib.pyplot as plt
 from keras.optimizers import SGD
-from genericNeuralNet import GenericNeuralNet, variable, variable_with_weight_decay
+from genericNeuralNet2 import GenericNeuralNet, variable, variable_with_weight_decay
 
 def load_imdb(maxlen=256,num_words=10000):
     # print(tf.__version__)

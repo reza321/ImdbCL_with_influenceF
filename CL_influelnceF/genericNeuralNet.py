@@ -26,7 +26,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from hessians import hessian_vector_product
 from dataset import DataSet
 
-
+tf.random.set_random_seed(10)
 def variable(name, shape, initializer):
     dtype = tf.float32
     var = tf.get_variable(
@@ -55,7 +55,7 @@ def variable_with_weight_decay(name, shape, stddev, wd):
         shape, 
         initializer=tf.truncated_normal_initializer(
             stddev=stddev, 
-            dtype=dtype))
+            dtype=dtype,seed=10))
  
     if wd is not None:
       weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
@@ -89,9 +89,10 @@ class GenericNeuralNet(object):
         self.model_name = kwargs.pop('model_name')
         self.num_classes = kwargs.pop('num_classes')
         self.initial_learning_rate = kwargs.pop('initial_learning_rate')        
+        self.decay_epochs = kwargs.pop('decay_epochs')
 
-        # if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
-        # else: self.keep_probs = None
+        if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
+        else: self.keep_probs = None
         
         if 'mini_batch' in kwargs: self.mini_batch = kwargs.pop('mini_batch')        
         else: self.mini_batch = True
@@ -113,25 +114,25 @@ class GenericNeuralNet(object):
         self.num_test_examples = self.data_sets.test.labels.shape[0]
         
         # Setup inference and training
-        # if self.keep_probs is not None:
-        #     self.keep_probs_placeholder = tf.placeholder(tf.float32, shape=(2))
-        #     self.logits = self.inference(self.input_placeholder, self.keep_probs_placeholder)
-        # elif hasattr(self, 'inference_needs_labels'):            
-        #     self.logits = self.inference(self.input_placeholder, self.labels_placeholder)
-        # else:
-        self.logits = self.inference(self.input_placeholder)
+        if self.keep_probs is not None:
+            self.keep_probs_placeholder = tf.placeholder(tf.float32, shape=(2))
+            self.logits = self.inference(self.input_placeholder, self.keep_probs_placeholder)
+        elif hasattr(self, 'inference_needs_labels'):            
+            self.logits = self.inference(self.input_placeholder, self.labels_placeholder)
+        else:
+            self.logits = self.inference(self.input_placeholder)
 
-        self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self.loss(self.logits, self.labels_placeholder)
-
-
+        self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self.loss(
+            self.logits, 
+            self.labels_placeholder)
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False)
-        #self.learning_rate_placeholder = tf.placeholder(tf.float32)
-        #self.update_learning_rate_op = tf.assign(self.learning_rate, self.learning_rate_placeholder)
+        self.learning_rate_placeholder = tf.placeholder(tf.float32)
+        self.update_learning_rate_op = tf.assign(self.learning_rate, self.learning_rate_placeholder)
         
-#        self.train_op = self.get_train_op(self.total_loss, self.global_step, self.learning_rate)
-        self.train_op = self.get_train_sgd_op(self.total_loss, self.global_step, self.learning_rate)
+        self.train_op = self.get_train_op(self.total_loss, self.global_step, self.learning_rate)
+        self.train_sgd_op = self.get_train_sgd_op(self.total_loss, self.global_step, self.learning_rate)
         self.accuracy_op = self.get_accuracy_op(self.logits, self.labels_placeholder)        
         self.preds = self.predictions(self.logits)
 
@@ -160,37 +161,26 @@ class GenericNeuralNet(object):
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
         self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
 
-        init = tf.global_variables_initializer()
+        init = tf.global_variables_initializer()        
         self.sess.run(init)
 
         self.vec_to_list = self.get_vec_to_list_fn()
-        # self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
-        # if self.adversarial_loss is not None:
-        #     self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
+        self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
+        if self.adversarial_loss is not None:
+            self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
         
 
     def get_vec_to_list_fn(self):
         params_val = self.sess.run(self.params)
-#        params_val_temp=[0]*np.shape(params_val)[0]
-
-#        for i in range(np.shape(params_val)[0]):
-#            params_val_temp [i]= params_val[i].reshape(-1)
-#            params_val[i] = params_val[i].reshape(-1)
-
-        self.num_params = len(np.concatenate(params_val))
+        self.num_params = len(np.concatenate(params_val))        
         print('Total number of parameters: %s' % self.num_params)
 
-
         def vec_to_list(v):
-
             return_list = []
             cur_pos = 0
             for p in params_val:
- 
-                p=p.reshape(-1)
                 return_list.append(v[cur_pos : cur_pos+len(p)])
                 cur_pos += len(p)
-
 
             assert cur_pos == len(v)
             return return_list
@@ -326,42 +316,73 @@ class GenericNeuralNet(object):
         print('Train acc on all data:  %s' % train_acc_val)
         print('Test acc on all data:   %s' % test_acc_val)
 
-        for i in range(np.shape(grad_loss_val)[0]):
-            grad_loss_val[i]=grad_loss_val[i].reshape(-1)
-
         print('Norm of the mean of gradients: %s' % np.linalg.norm(np.concatenate(grad_loss_val)))
-
-        for i in range(np.shape(params_val)[0]):
-            params_val[i]=params_val[i].reshape(-1)
-
-
         print('Norm of the params: %s' % np.linalg.norm(np.concatenate(params_val)))
 
 
 
-    def retrain(self, num_steps, feed_dict):
-        for step in xrange(num_steps):
+    def retrain(self, num_steps, feed_dict):        
+        for step in xrange(num_steps):   
             self.sess.run(self.train_op, feed_dict=feed_dict)
 
 
-    # def update_learning_rate(self, step):
-    #     assert self.num_train_examples % self.batch_size == 0
-    #     num_steps_in_epoch = self.num_train_examples / self.batch_size
-    #     epoch = step // num_steps_in_epoch
+    def update_learning_rate(self, step):
+        assert self.num_train_examples % self.batch_size == 0
+        num_steps_in_epoch = self.num_train_examples / self.batch_size
+        epoch = step // num_steps_in_epoch
 
-    #     multiplier = 1
-    #     if epoch < self.decay_epochs[0]:
-    #         multiplier = 1
-    #     elif epoch < self.decay_epochs[1]:
-    #         multiplier = 0.1
-    #     else:
-    #         multiplier = 0.01
+        multiplier = 1
+        if epoch < self.decay_epochs[0]:
+            multiplier = 1
+        elif epoch < self.decay_epochs[1]:
+            multiplier = 0.1
+        else:
+            multiplier = 0.01
         
-    #     self.sess.run(
-    #         self.update_learning_rate_op, 
-    #         feed_dict={self.learning_rate_placeholder: multiplier * self.initial_learning_rate})        
+        self.sess.run(
+            self.update_learning_rate_op, 
+            feed_dict={self.learning_rate_placeholder: multiplier * self.initial_learning_rate})        
 
 
+    def train(self, num_steps, 
+              iter_to_switch_to_batch=20000, 
+              iter_to_switch_to_sgd=40000,
+              save_checkpoints=True, verbose=True):
+        """
+        Trains a model for a specified number of steps.
+        """
+        if verbose: print('Training for %s steps' % num_steps)
+
+        sess = self.sess            
+
+        for step in xrange(num_steps):
+            self.update_learning_rate(step)
+
+            start_time = time.time()
+
+            if step < iter_to_switch_to_batch:                
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train)
+                _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
+                
+            elif step < iter_to_switch_to_sgd:
+                feed_dict = self.all_train_feed_dict          
+                _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
+
+            else: 
+                feed_dict = self.all_train_feed_dict          
+                _, loss_val = sess.run([self.train_sgd_op, self.total_loss], feed_dict=feed_dict)          
+
+            duration = time.time() - start_time
+
+            if verbose:
+                if step % 100 == 0:
+                    # Print status to stdout.
+                    print('Step %d: loss = %.8f (%.3f sec)' % (step, loss_val, duration))
+
+            # Save a checkpoint and evaluate the model periodically.
+            if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
+                if save_checkpoints: self.saver.save(sess, self.checkpoint_file, global_step=step)
+                if verbose: self.print_model_eval()
 
 
     def load_checkpoint(self, iter_to_load, do_checks=True):
@@ -392,21 +413,15 @@ class GenericNeuralNet(object):
 
 
     def get_accuracy_op(self, logits, labels):
-        """Evaluate the quality of the logits at predicting the label.
-        Args:
-          logits: Logits tensor, float - [batch_size, NUM_CLASSES].
-          labels: Labels tensor, int32 - [batch_size], with values in the
-            range [0, NUM_CLASSES).
-        Returns:
-          A scalar int32 tensor with the number of examples (out of batch_size)
-          that were predicted correctly.
-        """        
+
+
+
         correct = tf.nn.in_top_k(logits, labels, 1)
         return tf.reduce_sum(tf.cast(correct, tf.int32)) / tf.shape(labels)[0]
 
 
     def loss(self, logits, labels):
-        
+
         labels = tf.one_hot(labels, depth=self.num_classes) 
         cross_entropy = - tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), reduction_indices=1)        
         indiv_loss_no_reg = cross_entropy
@@ -416,41 +431,6 @@ class GenericNeuralNet(object):
         total_loss = tf.add_n(tf.get_collection('losses'), name='total_loss')    
 
         return total_loss, loss_no_reg, indiv_loss_no_reg
-
-
-
-    def train(self, num_steps, save_checkpoints=True, verbose=True):
-        """
-        Trains a model for a specified number of steps.
-        """
-        if verbose: print('Training for %s steps' % num_steps)
-
-        sess = self.sess            
-
-        for step in xrange(num_steps):
-            #self.update_learning_rate(step)
-
-            start_time = time.time()
-
-            # if step < iter_to_switch_to_batch:                
-            feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train)
-            fst, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)        
-
-
-            duration = time.time() - start_time
-
-            if verbose:
-                if step % 100 == 0:
-                    # Print status to stdout.
-                    print('Step %d: loss = %.8f (%.3f sec)' % (step, loss_val, duration))
-
-            # Save a checkpoint and evaluate the model periodically.
-            if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
-                if save_checkpoints: self.saver.save(sess, self.checkpoint_file, global_step=step)
-                if verbose: self.print_model_eval()
-
-
-
 
     def adversarial_loss(self, logits, labels):
         # Computes sum of log(1 - p(y = true|x))
@@ -485,8 +465,6 @@ class GenericNeuralNet(object):
     def get_inverse_hvp_lissa(self, v, 
                               batch_size=None,
                               scale=10, damping=0.0, num_samples=1, recursion_depth=10000):
-        
-        # This uses mini-batching; uncomment code for the single sample case.
         inverse_hvp = None
         print_iter = recursion_depth / 10
 
@@ -523,7 +501,6 @@ class GenericNeuralNet(object):
   
     
     def minibatch_hessian_vector_val(self, v):
-        minibatch_time = time.time()
 
         num_examples = self.num_train_examples
         if self.mini_batch == True:
@@ -540,18 +517,13 @@ class GenericNeuralNet(object):
             feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, batch_size=batch_size)
             # Can optimize this
             feed_dict = self.update_feed_dict_with_v_placeholder(feed_dict, v)
-#            print(tf.shape(feed_dict))
             hessian_vector_val_temp = self.sess.run(self.hessian_vector, feed_dict=feed_dict)
-
             if hessian_vector_val is None:
                 hessian_vector_val = [b / float(num_iter) for b in hessian_vector_val_temp]
             else:
                 hessian_vector_val = [a + (b / float(num_iter)) for (a,b) in zip(hessian_vector_val, hessian_vector_val_temp)]
-
+            
         hessian_vector_val = [a + self.damping * b for (a,b) in zip(hessian_vector_val, v)]
-
-        duration = time.time() - minibatch_time
-        print('minibatch_HV_value_calculation took  %s sec' % duration)
 
         return hessian_vector_val
 
@@ -609,12 +581,7 @@ class GenericNeuralNet(object):
         fmin_loss_fn = self.get_fmin_loss_fn(v)
         fmin_grad_fn = self.get_fmin_grad_fn(v)
         cg_callback = self.get_cg_callback(v, verbose)
-        
-        
-        for i in range(np.shape(v)[0]):
-            v[i]=v[i].reshape(-1)
-#            print(np.shape(v[i]))
-#        print(np.concatenate(v).shape)
+
         fmin_results = fmin_ncg(
             f=fmin_loss_fn,
             x0=np.concatenate(v),
@@ -677,7 +644,7 @@ class GenericNeuralNet(object):
 
         test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, loss_type=loss_type)
 
-        #print('Norm of test gradient: %s' % np.linalg.norm(np.concatenate(test_grad_loss_no_reg_val)))
+        print('Norm of test gradient: %s' % np.linalg.norm(np.concatenate(test_grad_loss_no_reg_val)))
 
         start_time = time.time()
 

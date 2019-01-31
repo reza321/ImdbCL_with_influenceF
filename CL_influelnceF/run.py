@@ -4,7 +4,7 @@ import time
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import experiments
+import experiments2 as experiments
 
 num_epochs=50
 batch_size=500
@@ -58,7 +58,7 @@ actual_loss_diffs, predicted_loss_diffs, indices_to_remove = experiments.test_re
 	model, 
 	test_idx=test_idx, 
 	iter_to_load=iter_to_load, 
-	num_to_remove=100,
+	num_to_remove=10,
 	num_steps=30000, 
 	remove_type='maxinf',
 	known_indices_to_remove=known_indices_to_remove,
